@@ -35,6 +35,7 @@
 # SOFTWARE.
 
 from __future__ import print_function
+from pprint import pprint,pformat
 import yaml
 import json
 import sys
@@ -135,31 +136,80 @@ class Host:
                 self.name, self.group(), self.var, self.tags)
 
 class Groups:
-    def __init__(self, groups, path=["root"]):
+    def __init__(self, groups, path=["root"], hardlimit=None):
 
+        if hardlimit:
+            if type(hardlimit) != list:
+               hardlimit=[hardlimit]
+            print("groups: %s  hardlimit: %s\n\n" % (pformat(groups),pformat(hardlimit)))
         # Call a subgroup (or vars)
+        godeeper=True
         if type(groups) == dict:
+            fullmatched=False
+            partmatched=False
             for g in groups:
-                p = path + [g]
-                fullpath = "-".join(p)
-                if 'vars' == p[-1]:
-                    _data["-".join(path)]['vars'] = groups['vars']
-                elif 'include' in p[-1]:
-                    for f in groups['include']:
-                        Groups(get_yaml(f), p[:len(p)-1])
-                else:
-                    if 'hosts' != p[-1]:
-                        if not fullpath in _data:
-                            _data[fullpath] = {}
-                        if not 'children' in _data["-".join(path)]:
-                            _data["-".join(path)]['children'] = []
+                pd=len(path) # pd=pathdepth. (root/=0) docker=1  docker/site_a=2 ...
+                pathstr='/'.join(path[1:]+[g])
+                print("current group %s\n" % g)
+                print("current path %s\n" % pathstr)
+                print("current pd %s\n" % pd)
+                if hardlimit:
+                    for limit in hardlimit:
+                        print("current limit %s" % limit)
+                        nsd=len(limit.strip('/').split('/'))
+                        print("nsd %s" % nsd)
+                        if nsd == pd:
+                            print("matching against pathstr %s " % (pathstr))
+                            if re.compile(limit).match(pathstr):
+                                fullmatched=True
+                                print("*full match*")
+                            else:
+                                #if not fullmatched: fullmatched=False
+                                print("_no full match_")
+                        elif pd > nsd:
+                            #if partmatched:
+                            fullmatched=True
+                        elif pd < nsd:
+                            print("matching against ns pathstr %s " % (pathstr))
+                            nspathstr='/'.join(path[1:]+[g])
+                            if re.compile('/'.join(limit.strip('/').split('/')[:pd])).match(pathstr):
+                                partmatched=True
+                                print("*part match*")
+                            else:
+                                if (not fullmatched and not partmatched):
+                                    partmatched=False
+                                    print("_no part match_")
+                    if g == 'hosts':
+                        if fullmatched:
+                            godeeper=True
+                        else:
+                            godeeper=False
 
-                            # workaround for https://github.com/ansible/ansible/issues/13655
-                            if not 'vars' in _data["-".join(path)]:
-                                _data["-".join(path)]['vars'] = {}
+                #
+                # proceed deeper if no limit was hit
+                if godeeper:
+                    p = path + [g]
+                    fullpath = "-".join(p)
+                    if 'vars' == p[-1]:
+                        _data["-".join(path)]['vars'] = groups['vars']
+                    elif 'include' in p[-1]:
+                        for f in groups['include']:
+                            Groups(get_yaml(f), p[:len(p)-1], hardlimit=hardlimit)
+                    else:
+                        if 'hosts' != p[-1]:
+                            if partmatched or fullmatched:
+                                if not fullpath in _data:
+                                    _data[fullpath] = {}
+                                if not 'children' in _data["-".join(path)]:
+                                    _data["-".join(path)]['children'] = []
 
-                        _data["-".join(path)]['children'].append("-".join(p))
-                    Groups(groups[g], p)
+                                    # workaround for https://github.com/ansible/ansible/issues/13655
+                                    if not 'vars' in _data["-".join(path)]:
+                                        _data["-".join(path)]['vars'] = {}
+
+                                _data["-".join(path)]['children'].append("-".join(p))
+                        if partmatched or fullmatched:
+                            Groups(groups[g], p, hardlimit=hardlimit)
 
         # Process groups
         elif type(groups) == list:
@@ -199,7 +249,7 @@ class TagVars:
 class Inventory:
     commands = ["include", "matcher", "tagvars"]
 
-    def __init__(self, ifile):
+    def __init__(self, ifile, hardlimit=None):
         json_data = get_yaml(ifile)
         global _matcher
 
@@ -213,7 +263,7 @@ class Inventory:
         for el in json_data:
             if not el in self.commands:
                 _data[el] = {}
-                Groups(json_data[el], [el])
+                Groups(json_data[el], [el],hardlimit=hardlimit)
                 break
 
 def main(argv):
@@ -222,11 +272,15 @@ def main(argv):
     parser = argparse.ArgumentParser(description='Ansible Inventory System')
     parser.add_argument('--list', help='List all inventory groups', action="store_true")
     parser.add_argument('--host', help='List vars for a host')
+    parser.add_argument('--hardlimit', help='Limit sections of inventory to return. This is mostly to reduce performance hits in ansible >=2.x when running a large inventory.',action='append')
     parser.add_argument('--file', help='File to open, default inventory.yml', 
             default='inventory.yml')
     args = parser.parse_args()
 
-    inventory = Inventory(args.file)
+    hardlimit = None
+    if args.hardlimit:
+        hardlimit=args.hardlimit
+    inventory = Inventory(args.file,hardlimit)
 
     if args.list:
         print_json(_data)

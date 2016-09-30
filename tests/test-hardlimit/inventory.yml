@@ -1,0 +1,15 @@
+---
+
+root:
+  docker:
+    hosts:
+      - myhost1.example.com
+    site_a:
+      - name: myhost2.example.com
+        tags: [alpha_group]
+    site_b:
+      alpha_group:
+        - myhost3.example.com
+      beta_group:
+        - myhost4.example.com
+        - myhost5.example.com
