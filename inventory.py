@@ -35,7 +35,7 @@
 # SOFTWARE.
 
 from __future__ import print_function
-from pprint import pprint,pformat
+from pprint import pformat
 import yaml
 import json
 import sys
@@ -46,6 +46,9 @@ import argparse
 _data = { "_meta" : { "hostvars": {} }}
 _matcher = {}
 _hostlog = []
+
+DEBUG=False
+#DEBUG=True
 
 # Nice output
 def print_json(data):
@@ -141,49 +144,61 @@ class Groups:
         if hardlimit:
             if type(hardlimit) != list:
                hardlimit=[hardlimit]
-            print("groups: %s  hardlimit: %s\n\n" % (pformat(groups),pformat(hardlimit)))
+            if DEBUG:
+                print("groups: %s  hardlimit: %s\n\n" % (pformat(groups),pformat(hardlimit)))
         # Call a subgroup (or vars)
-        godeeper=True
         if type(groups) == dict:
             fullmatched=False
             partmatched=False
             for g in groups:
+                godeeper=True
                 pd=len(path) # pd=pathdepth. (root/=0) docker=1  docker/site_a=2 ...
                 pathstr='/'.join(path[1:]+[g])
-                print("current group %s\n" % g)
-                print("current path %s\n" % pathstr)
-                print("current pd %s\n" % pd)
-                if hardlimit:
+                if DEBUG:
+                    print("current group %s\n" % g)
+                    print("current path %s\n" % pathstr)
+                    print("current pd %s\n" % pd)
+                if hardlimit and not g in ['hosts','include']:
                     for limit in hardlimit:
-                        print("current limit %s" % limit)
+                        if DEBUG:
+                            print("current limit %s" % limit)
                         nsd=len(limit.strip('/').split('/'))
-                        print("nsd %s" % nsd)
+                        if DEBUG:
+                            print("nsd %s" % nsd)
                         if nsd == pd:
-                            print("matching against pathstr %s " % (pathstr))
+                            if DEBUG:
+                                print("matching against pathstr %s " % (pathstr))
                             if re.compile(limit).match(pathstr):
                                 fullmatched=True
-                                print("*full match*")
+                                if DEBUG:
+                                    print("*full match*")
                             else:
                                 #if not fullmatched: fullmatched=False
-                                print("_no full match_")
+                                if DEBUG:
+                                    print("_no full match_")
                         elif pd > nsd:
                             #if partmatched:
                             fullmatched=True
                         elif pd < nsd:
-                            print("matching against ns pathstr %s " % (pathstr))
+                            if DEBUG:
+                                print("matching against ns pathstr %s " % (pathstr))
                             nspathstr='/'.join(path[1:]+[g])
                             if re.compile('/'.join(limit.strip('/').split('/')[:pd])).match(pathstr):
                                 partmatched=True
-                                print("*part match*")
+                                if DEBUG:
+                                    print("*part match*")
                             else:
                                 if (not fullmatched and not partmatched):
                                     partmatched=False
-                                    print("_no part match_")
+                                    if DEBUG:
+                                        print("_no part match_")
                     if g == 'hosts':
                         if fullmatched:
                             godeeper=True
                         else:
                             godeeper=False
+                    elif g == 'include':
+                        godeeper=True
 
                 #
                 # proceed deeper if no limit was hit
@@ -197,7 +212,7 @@ class Groups:
                             Groups(get_yaml(f), p[:len(p)-1], hardlimit=hardlimit)
                     else:
                         if 'hosts' != p[-1]:
-                            if partmatched or fullmatched:
+                            if (not hardlimit) or (partmatched or fullmatched):
                                 if not fullpath in _data:
                                     _data[fullpath] = {}
                                 if not 'children' in _data["-".join(path)]:
@@ -208,7 +223,7 @@ class Groups:
                                         _data["-".join(path)]['vars'] = {}
 
                                 _data["-".join(path)]['children'].append("-".join(p))
-                        if partmatched or fullmatched:
+                        if (not hardlimit) or (partmatched or fullmatched):
                             Groups(groups[g], p, hardlimit=hardlimit)
 
         # Process groups
