@@ -7,7 +7,7 @@ test-latest:
 test-devel:
 	git clone https://github.com/ansible/ansible.git
 	cd ansible \
-		&& git checkout stable-2.0 \
+		&& git checkout stable-2.4 \
 		&& git submodule update --init --recursive \
 		&& make install
 	tests/test.sh

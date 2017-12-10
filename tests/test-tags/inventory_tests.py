@@ -34,23 +34,24 @@ import unittest
 import operator
 
 from ansible import errors
-from ansible.inventory import Inventory
-
 from ansible import __version__ as ansible_version
+
+from ansible.inventory.manager import InventoryManager
 from ansible.parsing.dataloader import DataLoader
-from ansible.vars import VariableManager
+from ansible.vars.manager import VariableManager
 
 class AnsibleInventoryTests(unittest.TestCase):
-    var_manager = VariableManager()
     dataloader = DataLoader()
-    yml_inv = Inventory(
-        host_list="{}/inv.sh".format(os.path.dirname(__file__)),
-        loader=dataloader,
-        variable_manager=var_manager
+    yml_inv = InventoryManager(
+        sources="{}/inv.sh".format(os.path.dirname(__file__)),
+        loader=dataloader
     )
+    var_manager = VariableManager(loader=dataloader, inventory=yml_inv)
 
     def test_check_host_with_tags(self):
-        yml = self.yml_inv.get_vars("myhost2.example.com")
+        yml = self.var_manager.get_vars(host=self.yml_inv.get_host("myhost2.example.com"))
+        for k in ['groups', 'inventory_dir', 'inventory_file', 'omit', 'playbook_dir', 'ansible_playbook_python']:
+            yml.pop(k) # we do not care about comparing these right now
         result = {
             'inventory_hostname': u'myhost2.example.com',
             'group_names': [
@@ -70,7 +71,9 @@ class AnsibleInventoryTests(unittest.TestCase):
         self.assertDictEqual(yml, result, msg="\nGot:    {}\nExpect: {}".format(yml, result))
 
     def test_check_host_with_name_syntax(self):
-        yml = self.yml_inv.get_vars("myhost1.example.com")
+        yml = self.var_manager.get_vars(host=self.yml_inv.get_host("myhost1.example.com"))
+        for k in ['groups', 'inventory_dir', 'inventory_file', 'omit', 'playbook_dir', 'ansible_playbook_python']:
+            yml.pop(k) # we do not care about comparing these right now
         result = {
             'inventory_hostname': u'myhost1.example.com',
             'group_names': [

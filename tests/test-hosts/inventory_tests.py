@@ -32,25 +32,26 @@ from __future__ import print_function
 import os
 import unittest
 import operator
+from pprint import pformat
 
 from ansible import errors
-from ansible.inventory import Inventory
+from ansible.inventory.manager import InventoryManager
 from ansible.parsing.dataloader import DataLoader
-from ansible.vars import VariableManager
-
-from pprint import pprint
+from ansible.vars.manager import VariableManager
 
 class AnsibleInventoryTests(unittest.TestCase):
-    var_manager = VariableManager()
     dataloader = DataLoader()
-    yml_inv = Inventory(
-        host_list="{}/inv.sh".format(os.path.dirname(__file__)),
-        loader=dataloader,
-        variable_manager=var_manager
+    var_manager = VariableManager()
+    yml_inv = InventoryManager(
+        sources="{}/inv.sh".format(os.path.dirname(__file__)),
+        loader=dataloader
     )
+    var_manager = VariableManager(loader=dataloader, inventory=yml_inv)
 
     def test_check_host_vars_and_groups(self):
-        yml = self.yml_inv.get_vars("myhost1.example.com")
+        yml = self.var_manager.get_vars(host=self.yml_inv.get_host("myhost1.example.com"))
+        for k in ['groups', 'inventory_dir', 'inventory_file', 'omit', 'playbook_dir', 'ansible_playbook_python']:
+            yml.pop(k) # we do not care about comparing these right now
         result = {
             'inventory_hostname': u'myhost1.example.com',
             'group_names': [
@@ -65,7 +66,7 @@ class AnsibleInventoryTests(unittest.TestCase):
                 ],
             'inventory_hostname_short': u'myhost1'
             }
-        self.assertDictEqual(yml, result, msg="\nGot:    {}\nExpect: {}".format(yml, result))
+        self.assertDictEqual(yml, result, msg="\nGot:    {}\nExpect: {}".format(pformat(yml), pformat(result)))
 
     def test_list_hosts(self):
         yml = sorted(self.yml_inv.list_hosts())
